@@ -62,9 +62,9 @@ LogVar 弹幕 API 服务器
   - `GET /danmaku/api/v2/fongmi/danmaku?name={name}&episode={episode}`：兼容FengMi影视api短路径。
   - `GET /api/logs`：获取最近的日志（最多 500 行，格式为 `[时间戳] 级别: 消息`）。
   - `GET /api/cache/animes`：获取最近的 animes 缓存。
-- **弹幕格式输出**：支持 JSON 和 XML 两种格式输出，通过以下方式配置：
-  - 环境变量：`DANMU_OUTPUT_FORMAT=json|xml`（默认：json）
-  - 查询参数：`?format=xml` 或 `?format=json`（优先级最高）
+- **弹幕格式输出**：支持 JSON 和 XML 及 [@dan-uni/dan-any](https://github.com/ani-uni/dan-any)支持的全部输出格式 输出，通过以下方式配置：
+  - 环境变量：`DANMU_OUTPUT_FORMAT=json|xml|artplayer.json|baha.json|bili.xml|danuni.json|danuni.binpb|ddplay.json|dplayer.json|vod.json`（默认：json）
+  - 查询参数：`?format=xml` 或 `?format=json` ...（优先级最高）
   - 优先级：查询参数 > 环境变量 > 默认值
   - 示例：`GET /api/v2/comment/10001?format=xml` 返回 XML 格式弹幕
   - **XML 格式说明**：完全遵循 Bilibili 标准格式，8字段标准弹幕属性
@@ -453,7 +453,7 @@ API 支持返回 Bilibili 标准 XML 格式的弹幕数据，通过查询参数 
 | CONVERT_COLOR    | 【可选】弹幕转换颜色配置，默认为`default`（不转换），`white` 将所有非白色的弹幕颜色转换为纯白色，`color` 将所有白色弹幕转换为随机颜色（包含白色），可选值：`default`、`white`、`color`       |
 | COLOR_POOL    | 【可选】自定义颜色池（`CONVERT_COLOR`为`color`时生效），不配置使用默认颜色池（白、红、橙、黄、绿、青、蓝、紫、粉），格式：十进制颜色值逗号分隔，例如：`16711680,65280,255,16776960`       |
 | LIKE_SWITCH    | 【可选】弹幕点赞数显示开关，默认为`true`（开启），开启后会在弹幕内容后显示点赞数标记，≥5 才显示，避免低赞干扰       |
-| DANMU_OUTPUT_FORMAT    | 【可选】弹幕输出格式，默认为`json`，可选值：`json`（JSON格式）、`xml`（XML格式），支持通过查询参数`?format=xml`或`?format=json`覆盖此设置，优先级：查询参数 > 环境变量 > 默认值       |
+| DANMU_OUTPUT_FORMAT    | 【可选】弹幕输出格式，默认为`json`，可选值：`json`（JSON格式）、`xml`（XML格式）及所有`@dan-uni/dan-any`支持的输出格式，支持通过查询参数`?format=xml`或`?format=json`等覆盖此设置，优先级：查询参数 > 环境变量 > 默认值       |
 | DANMU_SIMPLIFIED_TRADITIONAL    | 【可选】弹幕简繁体转换设置：default（默认不转换）、simplified（繁转简）、traditional（简转繁）       |
 | DANMU_OFFSET      | 【可选】弹幕时间偏移配置，用于解决弹幕与视频不同步的问题。格式：剧名:秒（全剧偏移）或 剧名/季:秒（整季偏移）或 剧名/季/集:秒（单集偏移），支持指定来源：剧名@来源:秒 或 剧名/季@来源1&来源2:秒（不指定来源则对所有来源生效），多条用逗号分隔。例如：`overlord/S01:90, re-zero/S02@bilibili:120, re-zero/S02/E03@dandan&bilibili:10`。正数表示弹幕延后（向右），负数表示弹幕提前（向左）。支持百分比模式，在路径/来源末尾添加 `%`，例如：`东方/S03/E02@tencent%:11`，按 `原时间 * (视频时长 + 偏移秒数) / 视频时长` 计算新的弹幕发送时间。       |
 | UI_THEME    | 【可选】管理界面默认主题，默认为 `ocean`。浏览器中选择的主题会保存在本地并优先使用。可选值：`ocean`、`forest`、`graphite`、`berry`、`monochrome`、`sunset`、`aurora`、`lavender`、`mist`、`terminal`       |
@@ -588,12 +588,18 @@ API 支持返回 Bilibili 标准 XML 格式的弹幕数据，通过查询参数 
 ## 项目结构
 ```
 ├── .gitignore
+├── .github/
+│   └── workflows/
+│       ├── docker-image.yml     # Docker 镜像构建与推送
+│       ├── sync_fork.yml        # Fork 仓库自动同步
+│       └── sync_hf.yml          # Hugging Face Space 同步
 ├── build-forward-widget.js     # 构建forward弹幕插件脚本
 ├── Dockerfile
 ├── edgeone.json                # edgeone pages 配置文件
 ├── LICENSE
 ├── netlify.toml                # netlify 配置文件
 ├── package.json
+├── README.hf.md                # Hugging Face Space 部署说明
 ├── README.md
 ├── vercel.json                 # vercel 配置文件
 ├── wrangler.toml               # cloudflare worker 配置文件
@@ -605,17 +611,21 @@ API 支持返回 Bilibili 标准 XML 格式的弹幕数据，通过查询参数 
 │   ├── worker.js               # 主 API 服务器代码
 │   ├── worker.test.js          # 测试文件
 │   ├── apis/
+│   │   ├── clients/
+│   │   │   └── fongmi-api.js   # FongMi影视兼容接口
 │   │   ├── dandan-api.js       # 弹弹play兼容接口函数
 │   │   ├── env-api.js          # 环境变量接口函数
+│   │   ├── forward-trace-api.js # Forward 调试日志回传接口
 │   │   └── system-api.js       # 系统管理接口函数
 │   ├── configs/
 │   │   ├── envs.js             # 环境变量处理脚本
-│   │   └── globals.js          # 全局变量处理脚本
+│   │   ├── globals.js          # 全局变量处理脚本
 │   │   └── handlers/           # 部署平台API调用及环境变量处理类
 │   │       ├── base-handler.js
 │   │       ├── cloudflare-handler.js
 │   │       ├── edgeone-handler.js
 │   │       ├── handler-factory.js
+│   │       ├── huggingface-handler.js
 │   │       ├── netlify-handler.js
 │   │       ├── node-handler.js
 │   │       └── vercel-handler.js
@@ -653,7 +663,8 @@ API 支持返回 Bilibili 标准 XML 格式的弹幕数据，通过查询参数 
 │   │   │   ├── base.css.js     # 基础样式
 │   │   │   ├── components.css.js # 组件样式
 │   │   │   ├── forms.css.js    # 表单样式
-│   │   │   └── responsive.css.js # 响应式样式
+│   │   │   ├── responsive.css.js # 响应式样式
+│   │   │   └── themes.css.js   # 管理界面主题样式
 │   │   └── js/
 │   │       ├── apitest.js      # API测试脚本
 │   │       ├── logview.js      # 日志查看脚本
@@ -670,6 +681,7 @@ API 支持返回 Bilibili 标准 XML 格式的弹幕数据，通过查询参数 
 │       ├── codec-util.js       # 编解码工具
 │       ├── common-util.js      # 通用工具
 │       ├── cookie-util.js      # b站 cookie获取工具
+│       ├── dan-any.js          # dan-any 弹幕格式转换工具
 │       ├── danmu-util.js       # 弹幕处理工具
 │       ├── douban-util.js      # 豆瓣API请求工具
 │       ├── hanjutv-util.js     # 韩剧tv加解密工具
@@ -761,3 +773,4 @@ API 支持返回 Bilibili 标准 XML 格式的弹幕数据，通过查询参数 
 ### 📈项目 Star 数增长趋势
 #### Star History
 [![Star History Chart](https://api.star-history.com/svg?repos=huangxd-/danmu_api&type=Date)](https://www.star-history.com/#huangxd-/danmu_api&Date)
+
